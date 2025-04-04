@@ -81,6 +81,7 @@ const sources = {
     huggingface: 'huggingface',
     nanogpt: 'nanogpt',
     bfl: 'bfl',
+    falai: 'falai',
 };
 
 const initiators = {
@@ -782,7 +783,7 @@ async function onCharacterNegativePromptInput() {
 }
 
 function getCharacterPrefix() {
-    if (!this_chid || selected_group) {
+    if (this_chid === undefined || selected_group) {
         return '';
     }
 
@@ -796,7 +797,7 @@ function getCharacterPrefix() {
 }
 
 function getCharacterNegativePrefix() {
-    if (!this_chid || selected_group) {
+    if (this_chid === undefined || selected_group) {
         return '';
     }
 
@@ -1169,6 +1170,10 @@ async function onBflKeyClick() {
     return onApiKeyClick('BFL API Key:', SECRET_KEYS.BFL);
 }
 
+async function onFalaiKeyClick() {
+    return onApiKeyClick('FALAI API Key:', SECRET_KEYS.FALAI);
+}
+
 function onBflUpsamplingInput() {
     extension_settings.sd.bfl_upsampling = !!$('#sd_bfl_upsampling').prop('checked');
     saveSettingsDebounced();
@@ -1299,6 +1304,7 @@ async function onModelChange() {
         sources.huggingface,
         sources.nanogpt,
         sources.bfl,
+        sources.falai,
     ];
 
     if (cloudSources.includes(extension_settings.sd.source)) {
@@ -1707,6 +1713,9 @@ async function loadModels() {
         case sources.bfl:
             models = await loadBflModels();
             break;
+        case sources.falai:
+            models = await loadFalaiModels();
+            break;
     }
 
     for (const model of models) {
@@ -1742,6 +1751,21 @@ async function loadBflModels() {
         { value: 'flux-pro', text: 'flux-pro' },
         { value: 'flux-dev', text: 'flux-dev' },
     ];
+}
+
+async function loadFalaiModels() {
+    $('#sd_falai_key').toggleClass('success', !!secret_state[SECRET_KEYS.FALAI]);
+
+    const result = await fetch('/api/sd/falai/models', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+    });
+
+    if (result.ok) {
+        return await result.json();
+    }
+
+    return [];
 }
 
 async function loadPollinationsModels() {
@@ -1987,6 +2011,10 @@ async function loadVladModels() {
 async function loadNovelModels() {
     return [
         {
+            value: 'nai-diffusion-4-full',
+            text: 'NAI Diffusion Anime V4 (Full)',
+        },
+        {
             value: 'nai-diffusion-4-curated-preview',
             text: 'NAI Diffusion Anime V4 (Curated Preview)',
         },
@@ -2079,6 +2107,9 @@ async function loadSchedulers() {
             schedulers = ['N/A'];
             break;
         case sources.bfl:
+            schedulers = ['N/A'];
+            break;
+        case sources.falai:
             schedulers = ['N/A'];
             break;
     }
@@ -2306,7 +2337,10 @@ function processReply(str) {
     str = str.replaceAll('“', '');
     str = str.replaceAll('\n', ', ');
     str = str.normalize('NFD');
-    str = str.replace(/[^a-zA-Z0-9.,:_(){}<>[\]\-']+/g, ' ');
+    
+    // Strip out non-alphanumeric characters barring model syntax exceptions
+    str = str.replace(/[^a-zA-Z0-9.,:_(){}<>[\]\-'|#]+/g, ' ');
+    
     str = str.replace(/\s+/g, ' '); // Collapse multiple whitespaces into one
     str = str.trim();
 
@@ -2734,6 +2768,9 @@ async function sendGenerationRequest(generationType, prompt, additionalNegativeP
                 break;
             case sources.bfl:
                 result = await generateBflImage(prefixedPrompt, signal);
+                break;
+            case sources.falai:
+                result = await generateFalaiImage(prefixedPrompt, negativePrompt, signal);
                 break;
         }
 
@@ -3197,7 +3234,8 @@ function getNovelParams() {
         extension_settings.sd.scheduler = 'karras';
     }
 
-    if (extension_settings.sd.sampler === 'ddim' || extension_settings.sd.model === 'nai-diffusion-4-curated-preview') {
+    if (extension_settings.sd.sampler === 'ddim' || 
+        ['nai-diffusion-4-curated-preview', 'nai-diffusion-4-full'].includes(extension_settings.sd.model)) {
         sm = false;
         sm_dyn = false;
     }
@@ -3496,6 +3534,40 @@ async function generateBflImage(prompt, signal) {
     }
 }
 
+/**
+ * Generates an image using the FAL.AI API.
+ * @param {string} prompt - The main instruction used to guide the image generation.
+ * @param {string} negativePrompt - The negative prompt used to guide the image generation.
+ * @param {AbortSignal} signal - An AbortSignal object that can be used to cancel the request.
+ * @returns {Promise<{format: string, data: string}>} - A promise that resolves when the image generation and processing are complete.
+ */
+async function generateFalaiImage(prompt, negativePrompt, signal) {
+    const result = await fetch('/api/sd/falai/generate', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        signal: signal,
+        body: JSON.stringify({
+            prompt: prompt,
+            negative_prompt: negativePrompt,
+            model: extension_settings.sd.model,
+            steps: clamp(extension_settings.sd.steps, 1, 50),
+            guidance: clamp(extension_settings.sd.scale, 1.5, 5),
+            width: clamp(extension_settings.sd.width, 256, 1440),
+            height: clamp(extension_settings.sd.height, 256, 1440),
+            seed: extension_settings.sd.seed >= 0 ? extension_settings.sd.seed : undefined,
+        }),
+    });
+
+    if (result.ok) {
+        const data = await result.json();
+        return { format: 'jpg', data: data.image };
+    } else {
+        const text = await result.text();
+        console.log(text);
+        throw new Error(text);
+    }
+}
+
 async function onComfyOpenWorkflowEditorClick() {
     let workflow = await (await fetch('/api/sd/comfy/workflow', {
         method: 'POST',
@@ -3667,9 +3739,9 @@ async function sendMessage(prompt, image, generationType, additionalNegativePref
     };
     context.chat.push(message);
     const messageId = context.chat.length - 1;
-    await eventSource.emit(event_types.MESSAGE_RECEIVED, messageId);
+    await eventSource.emit(event_types.MESSAGE_RECEIVED, messageId, 'extension');
     context.addOneMessage(message);
-    await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, messageId);
+    await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, messageId, 'extension');
     await context.saveChat();
 }
 
@@ -3782,6 +3854,8 @@ function isValidState() {
             return secret_state[SECRET_KEYS.NANOGPT];
         case sources.bfl:
             return secret_state[SECRET_KEYS.BFL];
+        case sources.falai:
+            return secret_state[SECRET_KEYS.FALAI];
     }
 }
 
@@ -4443,6 +4517,7 @@ jQuery(async () => {
     $('#sd_function_tool').on('input', onFunctionToolInput);
     $('#sd_bfl_key').on('click', onBflKeyClick);
     $('#sd_bfl_upsampling').on('input', onBflUpsamplingInput);
+    $('#sd_falai_key').on('click', onFalaiKeyClick);
 
     if (!CSS.supports('field-sizing', 'content')) {
         $('.sd_settings .inline-drawer-toggle').on('click', function () {

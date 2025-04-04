@@ -55,6 +55,10 @@
     --interactable-outline-color: var(--white100);
     --interactable-outline-color-faint: var(--white20a);
 
+    --reasoning-body-color: var(--SmartThemeEmColor);
+    --reasoning-em-color: color-mix(in srgb, var(--SmartThemeEmColor) 67%, var(--SmartThemeBlurTintColor) 33%);
+    --reasoning-saturation: 0.5;
+
 
     /*Default Theme, will be changed by ToolCool Color Picker*/
     --SmartThemeBodyColor: rgb(220, 220, 210);
@@ -224,6 +228,37 @@ table.responsiveTable {
     animation-name: flash;
 }
 
+.has_hover_label .label_icon {
+    transition: opacity var(--animation-duration) ease, max-width var(--animation-duration) ease;
+}
+.has_hover_label .label {
+    transition: opacity var(--animation-duration-slow) ease, max-width var(--animation-duration-slow) ease;
+    /* Prevent double gap on hidden icon */
+    margin-left: -5px;
+}
+
+.has_hover_label .label_icon,
+.has_hover_label .label {
+    transition-delay: var(--animation-duration-slow);
+}
+.has_hover_label.fast .label_icon,
+.has_hover_label.fast .label {
+    transition-delay: var(--animation-duration);
+}
+
+.has_hover_label .label_icon,
+.has_hover_label:hover .label {
+    opacity: 1;
+    max-width: 100px;
+}
+
+.has_hover_label:hover .label_icon,
+.has_hover_label .label {
+    opacity: 0;
+    max-width: 0;
+    overflow: hidden;
+}
+
 /* Keyboard/focus navigation styling */
 /* Mimic the outline of keyboard navigation for most most focusable controls */
 .interactable {
@@ -260,6 +295,10 @@ input[type='checkbox']:focus-visible {
 .tokenItemizingSubclass {
     font-size: calc(var(--mainFontSize) * 0.8);
     color: var(--SmartThemeEmColor);
+}
+
+.tokenItemizingMaintext {
+    font-size: calc(var(--mainFontSize) * 0.8);
 }
 
 .tokenGraph {
@@ -344,13 +383,13 @@ input[type='checkbox']:focus-visible {
 
 .mes_reasoning {
     display: block;
-    border-left: 2px solid var(--SmartThemeEmColor);
+    border-left: 2px solid var(--reasoning-body-color);
     border-radius: 2px;
     padding: 5px;
     padding-left: 14px;
     margin-bottom: 0.5em;
     overflow-y: auto;
-    color: var(--SmartThemeEmColor);
+    color: hsl(from var(--reasoning-body-color) h calc(s * var(--reasoning-saturation)) l);
 }
 
 .mes_reasoning_details {
@@ -358,23 +397,16 @@ input[type='checkbox']:focus-visible {
 }
 
 .mes_reasoning_details .mes_reasoning_summary {
+    list-style: none;
     margin-right: calc(var(--mes-right-spacing) * -1);
+}
+
+.mes_reasoning_details summary::-webkit-details-marker {
+    display: none;
 }
 
 .mes_reasoning *:last-child {
     margin-bottom: 0;
-}
-
-.mes_reasoning em,
-.mes_reasoning i,
-.mes_reasoning u,
-.mes_reasoning q,
-.mes_reasoning blockquote {
-    filter: saturate(0.5);
-}
-
-.mes_reasoning_details .mes_reasoning em {
-    color: color-mix(in srgb, var(--SmartThemeEmColor) 67%, var(--SmartThemeBlurTintColor) 33%)
 }
 
 .mes_reasoning_header_block {
@@ -388,14 +420,18 @@ input[type='checkbox']:focus-visible {
     margin: 0.5em 2px;
     padding: 7px 14px;
     padding-right: calc(0.7em + 14px);
-    border-radius: 10px;
+    border-radius: 5px;
     background-color: var(--grey30);
     font-size: calc(var(--mainFontSize) * 0.9);
     align-items: baseline;
 }
 
+.mes:has(.mes_reasoning:empty) .mes_reasoning_header {
+    cursor: default;
+}
+
 /* TWIMC: Remove with custom CSS to show the icon */
-.mes_reasoning_header > .icon-svg {
+.mes_reasoning_header>.icon-svg {
     display: none;
 }
 
@@ -406,14 +442,26 @@ input[type='checkbox']:focus-visible {
 }
 
 .mes_bias:empty,
-.mes_reasoning:empty,
-.mes_reasoning_details:has(.mes_reasoning:empty),
+.mes:not(.reasoning) .mes_reasoning_details,
 .mes_reasoning_details:not([open]) .mes_reasoning_actions,
 .mes_reasoning_details:has(.reasoning_edit_textarea) .mes_reasoning,
 .mes_reasoning_details:has(.reasoning_edit_textarea) .mes_reasoning_header,
-.mes_reasoning_details:not(:has(.reasoning_edit_textarea)) .mes_reasoning_actions .edit_button,
 .mes_reasoning_details:has(.reasoning_edit_textarea) .mes_reasoning_actions .mes_button:not(.edit_button),
-.mes_block:has(.edit_textarea):has(.reasoning_edit_textarea) .mes_reasoning_actions {
+.mes_reasoning_details:not(:has(.reasoning_edit_textarea)) .mes_reasoning_actions .edit_button,
+.mes_block:has(.edit_textarea):has(.reasoning_edit_textarea) .mes_reasoning_actions,
+.mes.reasoning:not([data-reasoning-state="hidden"]) .mes_edit_add_reasoning,
+.mes:has(.mes_reasoning:empty) .mes_reasoning_arrow,
+.mes:has(.mes_reasoning:empty) .mes_reasoning,
+.mes:has(.mes_reasoning:empty) .mes_reasoning_copy {
+    display: none;
+}
+
+.mes[data-reasoning-state="hidden"] .mes_edit_add_reasoning {
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 33%, var(--SmartThemeBlurTintColor) 66%);
+}
+
+/** If hidden reasoning should not be shown, we hide all blocks that don't have content */
+#chat:not([data-show-hidden-reasoning="true"]):not(:has(.reasoning_edit_textarea)) .mes:has(.mes_reasoning:empty) .mes_reasoning_details {
     display: none;
 }
 
@@ -436,25 +484,35 @@ input[type='checkbox']:focus-visible {
 }
 
 .mes_text i,
-.mes_text em,
+.mes_text em {
+    color: var(--SmartThemeEmColor);
+}
 .mes_reasoning i,
 .mes_reasoning em {
-    color: var(--SmartThemeEmColor);
+    color: hsl(from var(--reasoning-em-color) h calc(s * var(--reasoning-saturation)) l);
 }
 
 .mes_text q i,
 .mes_text q em {
     color: inherit;
 }
-
-.mes_text u,
-.mes_reasoning u {
-    color: var(--SmartThemeUnderlineColor);
+.mes_reasoning q i,
+.mes_reasoning q em {
+    color: hsl(from var(--SmartThemeQuoteColor) h calc(s * var(--reasoning-saturation)) l);
 }
 
-.mes_text q,
-.mes_reasoning q {
+.mes_text u {
+    color: var(--SmartThemeUnderlineColor);
+}
+.mes_reasoning u {
+    color: hsl(from var(--SmartThemeUnderlineColor) h calc(s * var(--reasoning-saturation)) l);
+}
+
+.mes_text q {
     color: var(--SmartThemeQuoteColor);
+}
+.mes_reasoning q {
+    color: hsl(from var(--SmartThemeQuoteColor) h calc(s * var(--reasoning-saturation)) l);
 }
 
 .mes_text font[color] em,
@@ -1312,6 +1370,8 @@ body.swipeAllMessages .mes:not(.last_mes) .swipes-counter {
 }
 
 .avatars_inline {
+    display: flex;
+    gap: 5px;
     flex-wrap: wrap;
     overflow: hidden;
     max-height: calc(var(--avatar-base-height) + 2 * var(--avatar-base-border-radius));
@@ -1346,6 +1406,11 @@ body.swipeAllMessages .mes:not(.last_mes) .swipes-counter {
 
 .avatars_inline .avatar:last-of-type {
     margin-right: calc(var(--avatar-base-border-radius));
+}
+
+.avatars_multiline {
+    max-height: fit-content;
+    height: inherit;
 }
 
 .mes_block {
@@ -2842,6 +2907,7 @@ select option:not(:checked) {
 .menu_button.disabled {
     filter: brightness(75%) grayscale(1);
     opacity: 0.5;
+    cursor: inherit;
     pointer-events: none;
 }
 
@@ -2854,9 +2920,8 @@ select option:not(:checked) {
     color: var(--active) !important;
 }
 
-#instruct_enabled_label .menu_button:not(.toggleEnabled),
-#sysprompt_enabled_label .menu_button:not(.toggleEnabled) {
-    color: Red;
+.menu_button.togglable:not(.toggleEnabled) {
+    color: red;
 }
 
 .displayBlock {
@@ -2917,8 +2982,7 @@ select option:not(:checked) {
 }
 
 #form_character_search_form .menu_button,
-#GroupFavDelOkBack .menu_button,
-.avatar-container .menu_button {
+#GroupFavDelOkBack .menu_button {
     margin: 0;
     height: fit-content;
     padding: 5px;
@@ -2952,8 +3016,22 @@ select option:not(:checked) {
     width: max-content;
 }
 
-#persona-management-block .menu_button {
-    filter: grayscale(0.5);
+#persona-management-block .avatar_container_states .menu_button {
+    padding: 3px 5px;
+    pointer-events: initial;
+}
+
+#persona_controls .persona_name {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    text-align: left;
+    white-space: nowrap;
+    font-size: calc(var(--mainFontSize) * 1.25);
+    opacity: 0.5;
+}
+
+#persona_connections_buttons {
+    margin-bottom: 5px;
 }
 
 input[type=search]::-webkit-search-cancel-button {
@@ -3278,6 +3356,10 @@ input[type=search]:focus::-webkit-search-cancel-button {
     color: var(--golden);
 }
 
+.avatar.is_active {
+    outline: 2px solid var(--active);
+}
+
 #fav_chara_wrap {
     display: flex;
     margin: 5px 0px;
@@ -3345,28 +3427,6 @@ grammarly-extension {
     z-index: 35;
 }
 
-.avatar-container .avatar-buttons {
-    display: flex;
-    flex-direction: row;
-    gap: 3px;
-    opacity: 0.3;
-    transition: opacity 0.25s ease-in-out;
-}
-
-.avatar-container .avatar-buttons:hover {
-    opacity: 1;
-}
-
-.avatar-container .avatar-buttons .menu_button {
-    padding: 3px;
-}
-
-/* Ross should be able to handle this later */
-/*.big-avatars .avatar-buttons{
-    justify-content: center;
-    width: fit-content;
-}*/
-
 .avatar_div .avatar {
     /*     margin-left: 4px;
     margin-right: 10px;
@@ -3429,12 +3489,7 @@ grammarly-extension {
     cursor: pointer;
 }
 
-#rm_characters_block .form_create_bottom_buttons_block {
-    justify-content: space-evenly !important;
-    flex-grow: 0;
-}
-
-.form_create_bottom_buttons_block {
+.buttons_block {
     display: flex;
     flex: 1;
     gap: 5px;
@@ -3443,18 +3498,21 @@ grammarly-extension {
     flex-wrap: wrap;
 }
 
-.form_create_bottom_buttons_block .menu_button {
+.buttons_block .menu_button {
     display: flex;
     justify-content: center;
     align-items: center;
+    padding: 5px;
+    margin: 0;
+    filter: grayscale(0.5);
 }
 
-#delete_button,
+.red_button,
 .redWarningBG {
     background-color: var(--crimson70a) !important;
 }
 
-#delete_button:hover,
+.red_button:hover,
 .redWarningBG:hover {
     background-color: var(--fullred) !important;
 }
@@ -3629,6 +3687,7 @@ grammarly-extension {
 
 .menu_button {
     color: var(--SmartThemeBodyColor);
+    filter: grayscale(0.5);
     background-color: var(--SmartThemeBlurTintColor);
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 5px;
@@ -3648,15 +3707,8 @@ grammarly-extension {
     min-width: calc(1.25em + 12px);
 }
 
-.avatar_div .menu_button,
-.form_create_bottom_buttons_block .menu_button {
-    padding: 5px;
-    margin: 0;
-    filter: grayscale(0.5);
-}
-
-.menu_button:hover,
-.menu_button.active {
+.menu_button:not(.disabled):hover,
+.menu_button:not(.disabled).active {
     background-color: var(--white30a);
 }
 
@@ -3905,8 +3957,37 @@ input[type='checkbox'].del_checkbox {
     outline: var(--avatar-base-border-radius) solid var(--golden);
 }
 
-.avatar-container.default_persona .set_default_persona {
+.avatar-container .avatar_state .fa-lock {
+    color: var(--active);
+}
+
+.avatar-container:not(.locked_to_chat) .locked_to_chat_label {
+    display: none;
+}
+.avatar-container:not(.locked_to_character) .locked_to_character_label {
+    display: none;
+}
+
+#lock_persona_default.locked i.icon {
     color: var(--golden);
+}
+
+#lock_user_name.locked .icon,
+.avatar-container.locked_to_chat .locked_to_chat_label .icon {
+    color: var(--SmartThemeQuoteColor);
+}
+
+#lock_persona_to_char.locked .icon,
+.avatar-container.locked_to_character .locked_to_character_label .icon {
+    color: var(--active);
+}
+
+#lock_user_name.locked {
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 50%, var(--SmartThemeBorderColor));;
+}
+
+#lock_persona_to_char.locked {
+    border-color: color-mix(in srgb, var(--active) 50%, var(--SmartThemeBorderColor));
 }
 
 #user_avatar_block .avatar_upload {
@@ -4315,7 +4396,11 @@ input[type="range"]::-webkit-slider-thumb {
     field-sizing: content;
 }
 
-.mes.reasoning .mes_edit_add_reasoning {
+body[data-generating="true"] #send_but,
+body[data-generating="true"] #mes_continue,
+body[data-generating="true"] #mes_impersonate,
+body[data-generating="true"] #chat .last_mes .mes_buttons,
+body[data-generating="true"] #chat .last_mes .mes_reasoning_actions {
     display: none;
 }
 
@@ -5746,11 +5831,13 @@ body:not(.movingUI) .drawer-content.maximized {
     overflow-wrap: anywhere;
 }
 
+#SystemPromptColumn summary,
 #InstructSequencesColumn summary {
     font-size: 0.95em;
     cursor: pointer;
 }
 
+#SystemPromptColumn details,
 #InstructSequencesColumn details:not(:last-of-type) {
     margin-bottom: 5px;
 }
@@ -5913,4 +6000,53 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .mes_text div[data-type="assistant_note"]:has(.assistant_note_export)>div:not(.assistant_note_export) {
     flex: 1;
+}
+
+.oneline-dropdown label {
+    margin-top: 3px;
+    margin-bottom: 5px;
+    flex-grow: 1;
+    text-align: left;
+}
+
+.oneline-dropdown select {
+    min-width: fit-content;
+    width: 40%;
+}
+
+.multiline {
+    white-space: pre-wrap;
+}
+
+.info-block {
+    padding: 10px 1em;
+    margin: 1em 0;
+    border-radius: 10px;
+    border-left: 5px solid;
+    background-color: var(--SmartThemeBlurTintColor);
+    color: var(--SmartThemeBodyColor);
+    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
+    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
+}
+
+.info-block.hint {
+    border-color: var(--info-color, #7fb3e8);
+    background-color: rgba(163, 201, 241, 0.2);
+}
+
+.info-block.info {
+    border-color: var(--default-color, #e8e07f);
+    background-color: rgba(255, 255, 224, 0.2);
+}
+
+.info-block.warning {
+    border-color: var(--warning-color, #e8a97f);
+    background-color: rgba(241, 198, 163, 0.2);
+    /* Reset the font weight from that main warning class */
+    font-weight: unset;
+}
+
+.info-block.error {
+    border-color: var(--error-color, #e87f7f);
+    background-color: rgba(241, 163, 163, 0.2);
 }

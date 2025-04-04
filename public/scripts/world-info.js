@@ -21,6 +21,7 @@ import { callGenericPopup, Popup, POPUP_TYPE } from './popup.js';
 import { StructuredCloneMap } from './util/StructuredCloneMap.js';
 import { renderTemplateAsync } from './templates.js';
 import { t } from './i18n.js';
+import { accountStorage } from './util/AccountStorage.js';
 
 export const world_info_insertion_strategy = {
     evenly: 0,
@@ -400,6 +401,12 @@ class WorldInfoTimedEffects {
     #entries = [];
 
     /**
+     * Is this a dry run?
+     * @type {boolean}
+     */
+    #isDryRun = false;
+
+    /**
      * Buffer for active timed effects.
      * @type {Record<TimedEffectType, WIScanEntry[]>}
      */
@@ -448,10 +455,12 @@ class WorldInfoTimedEffects {
      * Initialize the timed effects with the given messages.
      * @param {string[]} chat Array of chat messages
      * @param {WIScanEntry[]} entries Array of entries
+     * @param {boolean} isDryRun Whether the operation is a dry run
      */
-    constructor(chat, entries) {
+    constructor(chat, entries, isDryRun = false) {
         this.#chat = chat;
         this.#entries = entries;
+        this.#isDryRun = isDryRun;
         this.#ensureChatMetadata();
     }
 
@@ -583,8 +592,10 @@ class WorldInfoTimedEffects {
      * Checks for timed effects on chat messages.
      */
     checkTimedEffects() {
-        this.#checkTimedEffectOfType('sticky', this.#buffer.sticky, this.#onEnded.sticky.bind(this));
-        this.#checkTimedEffectOfType('cooldown', this.#buffer.cooldown, this.#onEnded.cooldown.bind(this));
+        if (!this.#isDryRun) {
+            this.#checkTimedEffectOfType('sticky', this.#buffer.sticky, this.#onEnded.sticky.bind(this));
+            this.#checkTimedEffectOfType('cooldown', this.#buffer.cooldown, this.#onEnded.cooldown.bind(this));
+        }
         this.#checkDelayEffect(this.#buffer.delay);
 
         console.debug('[WI][DEBUG] Timed effects:', this.#buffer);
@@ -631,6 +642,7 @@ class WorldInfoTimedEffects {
      * @param {WIScanEntry[]} activatedEntries Entries that were activated
      */
     setTimedEffects(activatedEntries) {
+        if (this.#isDryRun) return;
         for (const entry of activatedEntries) {
             this.#setTimedEffectOfType('sticky', entry);
             this.#setTimedEffectOfType('cooldown', entry);
@@ -645,6 +657,9 @@ class WorldInfoTimedEffects {
      */
     setTimedEffect(type, entry, newState) {
         if (!this.isValidEffectType(type)) {
+            return;
+        }
+        if (this.#isDryRun && type !== 'delay') {
             return;
         }
 
@@ -860,7 +875,7 @@ export function setWorldInfoSettings(settings, data) {
         $('#world_editor_select').append(`<option value='${i}'>${item}</option>`);
     });
 
-    $('#world_info_sort_order').val(localStorage.getItem(SORT_ORDER_KEY) || '0');
+    $('#world_info_sort_order').val(accountStorage.getItem(SORT_ORDER_KEY) || '0');
     $('#world_info').trigger('change');
     $('#world_editor_select').trigger('change');
 
@@ -1935,13 +1950,13 @@ function displayWorldEntries(name, data, navigation = navigation_option.none, fl
     if (typeof navigation === 'number' && Number(navigation) >= 0) {
         const data = getDataArray();
         const uidIndex = data.findIndex(x => x.uid === navigation);
-        const perPage = Number(localStorage.getItem(storageKey)) || perPageDefault;
+        const perPage = Number(accountStorage.getItem(storageKey)) || perPageDefault;
         startPage = Math.floor(uidIndex / perPage) + 1;
     }
 
     $('#world_info_pagination').pagination({
         dataSource: getDataArray,
-        pageSize: Number(localStorage.getItem(storageKey)) || perPageDefault,
+        pageSize: Number(accountStorage.getItem(storageKey)) || perPageDefault,
         sizeChangerOptions: [10, 25, 50, 100, 500, 1000],
         showSizeChanger: true,
         pageRange: 1,
@@ -1971,7 +1986,7 @@ function displayWorldEntries(name, data, navigation = navigation_option.none, fl
             worldEntriesList.append(blocks);
         },
         afterSizeSelectorChange: function (e) {
-            localStorage.setItem(storageKey, e.target.value);
+            accountStorage.setItem(storageKey, e.target.value);
         },
         afterPaging: function () {
             $('#world_popup_entries_list textarea[name="comment"]').each(function () {
@@ -2176,7 +2191,7 @@ function verifyWorldInfoSearchSortRule() {
     // If search got cleared, we make sure to hide the option and go back to the one before
     if (!searchTerm && !isHidden) {
         searchOption.attr('hidden', '');
-        selector.val(localStorage.getItem(SORT_ORDER_KEY) || '0');
+        selector.val(accountStorage.getItem(SORT_ORDER_KEY) || '0');
     }
 }
 
@@ -2425,7 +2440,9 @@ export async function getWorldEntry(name, data, entry) {
                     setWIOriginalDataValue(data, uid, originalDataValueName, data.entries[uid][entryPropName]);
                     await saveWorldInfo(name, data);
                 }
+                $(this).toggleClass('empty', !data.entries[uid][entryPropName].length);
             });
+            input.toggleClass('empty', !entry[entryPropName].length);
             input.on('select2:select', /** @type {function(*):void} */ event => updateWorldEntryKeyOptionsCache([event.params.data]));
             input.on('select2:unselect', /** @type {function(*):void} */ event => updateWorldEntryKeyOptionsCache([event.params.data], { remove: true }));
 
@@ -2460,6 +2477,7 @@ export async function getWorldEntry(name, data, entry) {
                     data.entries[uid][entryPropName] = splitKeywordsAndRegexes(value);
                     setWIOriginalDataValue(data, uid, originalDataValueName, data.entries[uid][entryPropName]);
                     await saveWorldInfo(name, data);
+                    $(this).toggleClass('empty', !data.entries[uid][entryPropName].length);
                 }
             });
             input.val(entry[entryPropName].join(', ')).trigger('input', { skipReset: true });
@@ -3437,7 +3455,7 @@ async function _save(name, data) {
         headers: getRequestHeaders(),
         body: JSON.stringify({ name: name, data: data }),
     });
-    eventSource.emit(event_types.WORLDINFO_UPDATED, name, data);
+    await eventSource.emit(event_types.WORLDINFO_UPDATED, name, data);
 }
 
 
@@ -3524,6 +3542,10 @@ export async function deleteWorldInfo(worldInfoName) {
 
     if (!response.ok) {
         return false;
+    }
+
+    if (worldInfoCache.has(worldInfoName)) {
+        worldInfoCache.delete(worldInfoName);
     }
 
     const existingWorldIndex = selected_world_info.findIndex((e) => e === worldInfoName);
@@ -3849,7 +3871,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun) {
     const context = getContext();
     const buffer = new WorldInfoBuffer(chat);
 
-    console.debug(`[WI] --- START WI SCAN (on ${chat.length} messages) ---`);
+    console.debug(`[WI] --- START WI SCAN (on ${chat.length} messages)${isDryRun ? ' (DRY RUN)' : ''} ---`);
 
     // Combine the chat
 
@@ -3881,9 +3903,9 @@ export async function checkWorldInfo(chat, maxContext, isDryRun) {
 
     console.debug(`[WI] Context size: ${maxContext}; WI budget: ${budget} (max% = ${world_info_budget}%, cap = ${world_info_budget_cap})`);
     const sortedEntries = await getSortedEntries();
-    const timedEffects = new WorldInfoTimedEffects(chat, sortedEntries);
+    const timedEffects = new WorldInfoTimedEffects(chat, sortedEntries, isDryRun);
 
-    !isDryRun && timedEffects.checkTimedEffects();
+    timedEffects.checkTimedEffects();
 
     if (sortedEntries.length === 0) {
         return { worldInfoBefore: '', worldInfoAfter: '', WIDepthEntries: [], EMEntries: [], allActivatedEntries: new Set() };
@@ -4253,8 +4275,10 @@ export async function checkWorldInfo(chat, maxContext, isDryRun) {
         if (scanState) {
             const text = successfulNewEntriesForRecursion
                 .map(x => x.content).join('\n');
-            buffer.addRecurse(text);
-            allActivatedText = (text + '\n' + allActivatedText);
+            if (text) {
+                buffer.addRecurse(text);
+                allActivatedText = (text + '\n' + allActivatedText);
+            }
         } else {
             logNextState('[WI] Scan done. No new entries to prompt. Stopping.');
         }
@@ -4331,12 +4355,12 @@ export async function checkWorldInfo(chat, maxContext, isDryRun) {
         context.setExtensionPrompt(NOTE_MODULE_NAME, ANWithWI, chat_metadata[metadata_keys.position], chat_metadata[metadata_keys.depth], extension_settings.note.allowWIScan, chat_metadata[metadata_keys.role]);
     }
 
-    !isDryRun && timedEffects.setTimedEffects(Array.from(allActivatedEntries.values()));
+    timedEffects.setTimedEffects(Array.from(allActivatedEntries.values()));
     buffer.resetExternalEffects();
     timedEffects.cleanUp();
 
-    console.log(`[WI] Adding ${allActivatedEntries.size} entries to prompt`, Array.from(allActivatedEntries.values()));
-    console.debug('[WI] --- DONE ---');
+    console.log(`[WI] ${isDryRun ? 'Hypothetically adding' : 'Adding'} ${allActivatedEntries.size} entries to prompt`, Array.from(allActivatedEntries.values()));
+    console.debug(`[WI] --- DONE${isDryRun ? ' (DRY RUN)' : ''} ---`);
 
     return { worldInfoBefore, worldInfoAfter, EMEntries, WIDepthEntries, allActivatedEntries: new Set(allActivatedEntries.values()) };
 }
@@ -4721,7 +4745,7 @@ export function setWorldInfoButtonClass(chid, forceValue = undefined) {
         return;
     }
 
-    if (!chid) {
+    if (chid === undefined) {
         return;
     }
 
@@ -4743,8 +4767,8 @@ export function checkEmbeddedWorld(chid) {
         // Only show the alert once per character
         const checkKey = `AlertWI_${characters[chid].avatar}`;
         const worldName = characters[chid]?.data?.extensions?.world;
-        if (!localStorage.getItem(checkKey) && (!worldName || !world_names.includes(worldName))) {
-            localStorage.setItem(checkKey, 'true');
+        if (!accountStorage.getItem(checkKey) && (!worldName || !world_names.includes(worldName))) {
+            accountStorage.setItem(checkKey, 'true');
 
             if (power_user.world_import_dialog) {
                 const html = `<h3>This character has an embedded World/Lorebook.</h3>
@@ -4774,7 +4798,13 @@ export function checkEmbeddedWorld(chid) {
 export async function importEmbeddedWorldInfo(skipPopup = false) {
     const chid = $('#import_character_info').data('chid');
 
-    if (chid === undefined) {
+    if (chid === undefined || chid === -1) {
+        return;
+    }
+
+    const hasEmbed = checkEmbeddedWorld(chid);
+
+    if (!hasEmbed) {
         return;
     }
 
@@ -5156,20 +5186,24 @@ jQuery(() => {
     });
 
     $('#world_button').on('click', async function (event) {
+        const openSetWorldMenu = () => $('#char-management-dropdown').val($('#set_character_world').val()).trigger('change');
         const chid = $('#set_character_world').data('chid');
 
-        if (chid) {
-            const worldName = characters[chid]?.data?.extensions?.world;
-            const hasEmbed = checkEmbeddedWorld(chid);
-            if (worldName && world_names.includes(worldName) && !event.shiftKey) {
-                openWorldInfoEditor(worldName);
-            } else if (hasEmbed && !event.shiftKey) {
-                await importEmbeddedWorldInfo();
-                saveCharacterDebounced();
-            }
-            else {
-                $('#char-management-dropdown').val($('#set_character_world').val()).trigger('change');
-            }
+        if (chid === -1) {
+            openSetWorldMenu();
+            return;
+        }
+
+        const worldName = characters[chid]?.data?.extensions?.world;
+        const hasEmbed = checkEmbeddedWorld(chid);
+        if (worldName && world_names.includes(worldName) && !event.shiftKey) {
+            openWorldInfoEditor(worldName);
+        } else if (hasEmbed && !event.shiftKey) {
+            await importEmbeddedWorldInfo();
+            saveCharacterDebounced();
+        }
+        else {
+            openSetWorldMenu();
         }
     });
 
@@ -5188,7 +5222,7 @@ jQuery(() => {
     $('#world_info_sort_order').on('change', function () {
         const value = String($(this).find(':selected').val());
         // Save sort order, but do not save search sorting, as this is a temporary sorting option
-        if (value !== 'search') localStorage.setItem(SORT_ORDER_KEY, value);
+        if (value !== 'search') accountStorage.setItem(SORT_ORDER_KEY, value);
         updateEditor(navigation_option.none);
     });
 
